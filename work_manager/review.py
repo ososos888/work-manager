@@ -102,6 +102,23 @@ def task_section(title: str, tasks: list) -> list[str]:
     return lines + [task_line(task) for task in tasks] + [""]
 
 
+def recommendation_section(title: str, recs: list) -> list[str]:
+    lines = [f"## {title}", ""]
+    if not recs:
+        return lines + ["None.", ""]
+    return lines + [f"- #{rec['id']} [{rec['severity']}] {rec['category']} · {rec['title']} — {rec['rationale']}" for rec in recs] + [""]
+
+
+def priority_rank(task) -> int:
+    return {"highest": 0, "high": 1, "medium": 2, "low": 3, "later": 4}.get(task["priority"], 9)
+
+
+def days_until_due(task, today: str) -> int | None:
+    if not task["due_date"]:
+        return None
+    return (date.fromisoformat(task["due_date"]) - date.fromisoformat(today)).days
+
+
 def write_report(review_id: int, today: str, tasks: list, created: list[tuple], skipped_duplicates: int) -> Path:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     report = REPORTS_DIR / f"daily-review-{today}-{review_id}.md"
@@ -113,11 +130,14 @@ def write_report(review_id: int, today: str, tasks: list, created: list[tuple], 
         f"Duplicate pending recommendations skipped: {skipped_duplicates}",
         "",
     ]
-    active = [task for task in tasks if task["status"] in {"active", "blocked", "waiting"}]
-    not_started = [task for task in tasks if task["status"] in {"todo", "on_demand"}]
+    urgent = [task for task in tasks if task["status"] != "done" and (days_until_due(task, today) is not None and days_until_due(task, today) <= 7)]
+    active = [task for task in tasks if task["status"] in {"active", "blocked", "waiting", "todo", "on_demand"} and task not in urgent]
     done = [task for task in tasks if task["status"] == "done"]
-    lines.extend(task_section("In progress", active))
-    lines.extend(task_section("Not started / on demand", not_started))
+    urgent = sorted(urgent, key=lambda task: (days_until_due(task, today), priority_rank(task), task["tree_path"] if "tree_path" in task.keys() else task["id"]))
+    active = sorted(active, key=lambda task: (priority_rank(task), task["tree_path"] if "tree_path" in task.keys() else task["id"]))
+    lines.extend(task_section("Deadline / due soon first", urgent))
+    lines.extend(task_section("Other active or not-started work", active))
+    lines.extend(recommendation_section("High-priority AI recommendations", [rec for _, rec in created[:5]]))
     lines.extend(task_section("Done", done))
     if not created:
         lines.append("No new recommendations.")
