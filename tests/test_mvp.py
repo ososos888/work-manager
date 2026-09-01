@@ -31,7 +31,10 @@ def test_seed_schema_and_review(tmp_path):
     assert "duplicates skipped" in latest["summary"]
     report_path = Path(latest["markdown_report_path"])
     assert report_path.exists()
-    assert "No new recommendations" in report_path.read_text(encoding="utf-8")
+    report_text = report_path.read_text(encoding="utf-8")
+    assert "## In progress" in report_text
+    assert "## Not started / on demand" in report_text
+    assert "No new recommendations" in report_text
 
 
 def test_dashboard_decision(tmp_path, monkeypatch):

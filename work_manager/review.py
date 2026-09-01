@@ -89,6 +89,19 @@ def task_recommendations(task, today: date) -> list[dict]:
     return out
 
 
+def task_line(task) -> str:
+    due = f" · due {task['due_date']}" if task['due_date'] else ""
+    action = f" — next: {task['next_action']}" if task['next_action'] else ""
+    return f"- #{task['id']} [{task['priority']}] {task['category']} · {task['title']}{due}{action}"
+
+
+def task_section(title: str, tasks: list) -> list[str]:
+    lines = [f"## {title}", ""]
+    if not tasks:
+        return lines + ["None.", ""]
+    return lines + [task_line(task) for task in tasks] + [""]
+
+
 def write_report(review_id: int, today: str, tasks: list, created: list[tuple], skipped_duplicates: int) -> Path:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     report = REPORTS_DIR / f"daily-review-{today}-{review_id}.md"
@@ -100,6 +113,10 @@ def write_report(review_id: int, today: str, tasks: list, created: list[tuple], 
         f"Duplicate pending recommendations skipped: {skipped_duplicates}",
         "",
     ]
+    active = [task for task in tasks if task["status"] in {"active", "blocked", "waiting"}]
+    not_started = [task for task in tasks if task["status"] in {"todo", "on_demand"}]
+    lines.extend(task_section("In progress", active))
+    lines.extend(task_section("Not started / on demand", not_started))
     if not created:
         lines.append("No new recommendations.")
         lines.append("")
