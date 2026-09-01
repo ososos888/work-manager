@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from work_manager.app import app
-from work_manager.db import connect, init_db
+from work_manager.db import allow_official_writes, connect, init_db
 from work_manager.review import run_daily_review
 from work_manager.seed import import_seed
 
@@ -43,7 +43,7 @@ def test_dashboard_decision(tmp_path, monkeypatch):
     test_db = tmp_path / "app.sqlite3"
     monkeypatch.setattr(config, "DB_PATH", test_db)
     init_db(test_db)
-    with connect(test_db) as conn:
+    with allow_official_writes(), connect(test_db) as conn:
         conn.execute("INSERT INTO official_tasks(id,category,title,status,priority) VALUES(1,'cat','X','todo','high')")
         conn.execute(
             "INSERT INTO ai_recommendations(task_id,category,recommendation_type,severity,title,rationale) VALUES(1,'cat','risk','high','Do X','Body')"
@@ -63,3 +63,22 @@ def test_dashboard_decision(tmp_path, monkeypatch):
         loc = conn.execute("SELECT * FROM task_work_locations WHERE task_id=1").fetchone()
     assert loc["location_type"] == "local"
     assert loc["uri"] == "file:///tmp/repo"
+
+
+def test_official_state_is_locked_by_default(tmp_path):
+    db_path = tmp_path / "guard.sqlite3"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        try:
+            conn.execute("INSERT INTO official_tasks(category,title,status,priority) VALUES('cat','Blocked','todo','medium')")
+            assert False, "official task insert should be locked"
+        except Exception as exc:
+            assert "not authorized" in str(exc) or "official task state is locked" in str(exc)
+        conn.execute(
+            "INSERT INTO ai_recommendations(recommendation_type,title,rationale) VALUES('risk','Allowed','AI-owned')"
+        )
+    with allow_official_writes(), connect(db_path) as conn:
+        conn.execute("INSERT INTO official_tasks(category,title,status,priority) VALUES('cat','Allowed','todo','medium')")
+    with connect(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) c FROM official_tasks").fetchone()["c"] == 1
+        assert conn.execute("SELECT COUNT(*) c FROM ai_recommendations").fetchone()["c"] == 1

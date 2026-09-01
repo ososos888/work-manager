@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
+import os
 import sqlite3
 from pathlib import Path
 
@@ -6,6 +10,32 @@ from . import config
 STATUSES = {"todo", "active", "blocked", "waiting", "done", "dropped", "on_demand", "excluded"}
 PRIORITIES = {"highest", "high", "medium", "low", "later"}
 RECOMMENDATION_STATUSES = {"pending", "approved", "rejected", "deferred", "superseded"}
+PROTECTED_TABLES = {"official_tasks", "task_links", "task_work_locations", "task_updates"}
+PROTECTED_ACTIONS = {sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE}
+OFFICIAL_WRITE_ENV = "WORK_MANAGER_ALLOW_OFFICIAL_WRITES"
+
+
+def official_writes_enabled() -> bool:
+    return os.environ.get(OFFICIAL_WRITE_ENV) == "1"
+
+
+def _main_state_authorizer(action, arg1, arg2, db_name, trigger_name):
+    if action in PROTECTED_ACTIONS and arg1 in PROTECTED_TABLES and not official_writes_enabled():
+        return sqlite3.SQLITE_DENY
+    return sqlite3.SQLITE_OK
+
+
+@contextmanager
+def allow_official_writes():
+    previous = os.environ.get(OFFICIAL_WRITE_ENV)
+    os.environ[OFFICIAL_WRITE_ENV] = "1"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(OFFICIAL_WRITE_ENV, None)
+        else:
+            os.environ[OFFICIAL_WRITE_ENV] = previous
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -111,13 +141,32 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
+GUARDED_TABLES = ("official_tasks", "task_links", "task_work_locations", "task_updates")
+
+
+def install_main_state_guard(conn: sqlite3.Connection) -> None:
+    for table in GUARDED_TABLES:
+        for action in ("INSERT", "UPDATE", "DELETE"):
+            conn.execute(
+                f"""
+                CREATE TRIGGER IF NOT EXISTS guard_{table}_{action.lower()}
+                BEFORE {action} ON {table}
+                WHEN work_manager_official_writes_enabled() != 1
+                BEGIN
+                  SELECT RAISE(ABORT, 'official task state is locked; explicit user-approved official write required');
+                END;
+                """
+            )
+
 
 def connect(path: Path | None = None) -> sqlite3.Connection:
     path = path or config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
+    conn.create_function("work_manager_official_writes_enabled", 0, lambda: 1 if official_writes_enabled() else 0)
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.set_authorizer(_main_state_authorizer)
     return conn
 
 
@@ -162,9 +211,10 @@ def migrate(conn: sqlite3.Connection) -> None:
 
 
 def init_db(path: Path | None = None) -> None:
-    with connect(path) as conn:
+    with allow_official_writes(), connect(path) as conn:
         conn.executescript(SCHEMA)
         migrate(conn)
+        install_main_state_guard(conn)
         conn.execute("UPDATE official_tasks SET last_updated_at=COALESCE(last_updated_at, created_at, CURRENT_TIMESTAMP)")
         rec_cols = {row["name"] for row in conn.execute("PRAGMA table_info(ai_recommendations)")}
         if "body" in rec_cols:

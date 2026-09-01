@@ -3,7 +3,7 @@ from html import escape
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from .db import RECOMMENDATION_STATUSES, connect, init_db
+from .db import RECOMMENDATION_STATUSES, allow_official_writes, connect, init_db
 from .review import run_daily_review
 
 app = FastAPI(title="work-manager")
@@ -176,7 +176,7 @@ def add_work_location(
     details: str = Form(""),
 ):
     guard_localhost(request)
-    with connect() as conn:
+    with allow_official_writes(), connect() as conn:
         task = conn.execute("SELECT id FROM official_tasks WHERE id=?", (task_id,)).fetchone()
         if not task:
             return HTMLResponse("not found", status_code=404)
