@@ -34,6 +34,7 @@ button, .btn { display:inline-block; background:var(--brand); border-color:var(-
 .pill { border-radius:999px; padding:3px 8px; font-size:12px; background:#eef2ff; color:#3538cd; white-space:nowrap; }
 .pill.active { background:#ecfdf3; color:var(--ok); }
 .pill.todo { background:#fff7ed; color:var(--warn); }
+.pill.done { background:#f2f4f7; color:#475467; }
 .pill.seed { background:#f2f4f7; color:#475467; }
 .pill.epic { background:#f4ebff; color:#6941c6; }
 .list { list-style:none; margin:0; padding:0; }
@@ -51,9 +52,10 @@ HTML = """
 <div class="header"><div><h1>Work manager</h1><div class="subtle">Local task dashboard · official updates and AI recommendations are separated</div></div><form method="post" action="/reviews/manual"><button>Run daily review</button></form></div>
 <section class="card">
 <form class="toolbar"><input name="q" value="{q}" placeholder="Search title"><input name="status" value="{status}" placeholder="status"><input name="category" value="{category}" placeholder="category"><select name="source"><option value="non_seed" {source_non_seed}>registered only</option><option value="all" {source_all}>all tasks</option><option value="seed" {source_seed}>seed only</option></select><button>Filter</button></form>
-<div class="subtle">Showing {count} task(s). 기본은 사용자가 등록/수정한 업무만 보이도록 seed_import 항목을 숨깁니다.</div>
+<div class="subtle">Showing {count} active/open task(s). 기본은 사용자가 등록/수정한 업무만 보이도록 seed_import 항목을 숨깁니다.</div>
 <div class="list">{tasks}</div>
 </section>
+<section class="card" style="margin-top:16px"><h2>Done</h2><div class="subtle">완료된 업무를 하이라키 깊이를 유지해 따로 모읍니다.</div><div class="list">{done_tasks}</div></section>
 <section class="card" style="margin-top:16px"><h2>Pending recommendations</h2><div class="list">{recs}</div></section>
 </main></body></html>
 """
@@ -112,12 +114,15 @@ def index(request: Request, status: str = "", category: str = "", q: str = "", s
     SELECT * FROM tree ORDER BY tree_path
     """
     with connect() as conn:
-        tasks = conn.execute(sql, params).fetchall()
+        all_tasks = conn.execute(sql, params).fetchall()
         recs = conn.execute("SELECT r.*, t.title task_title FROM ai_recommendations r LEFT JOIN official_tasks t ON t.id=r.task_id WHERE r.status='pending' ORDER BY r.created_at DESC").fetchall()
+    tasks = [t for t in all_tasks if t["status"] != "done"]
+    done_tasks = [t for t in all_tasks if t["status"] == "done"]
     task_html = "".join(task_item(t) for t in tasks) or '<div class="empty">No tasks</div>'
+    done_html = "".join(task_item(t) for t in done_tasks) or '<div class="empty">No done tasks</div>'
     rec_html = "".join(rec_item(r) for r in recs) or '<div class="empty">No pending recommendations</div>'
     return HTML.format(
-        style=STYLE, tasks=task_html, recs=rec_html, count=len(tasks),
+        style=STYLE, tasks=task_html, done_tasks=done_html, recs=rec_html, count=len(tasks),
         status=escape(status), category=escape(category), q=escape(q),
         source_non_seed="selected" if source == "non_seed" else "",
         source_all="selected" if source == "all" else "",

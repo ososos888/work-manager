@@ -115,8 +115,10 @@ def write_report(review_id: int, today: str, tasks: list, created: list[tuple], 
     ]
     active = [task for task in tasks if task["status"] in {"active", "blocked", "waiting"}]
     not_started = [task for task in tasks if task["status"] in {"todo", "on_demand"}]
+    done = [task for task in tasks if task["status"] == "done"]
     lines.extend(task_section("In progress", active))
     lines.extend(task_section("Not started / on demand", not_started))
+    lines.extend(task_section("Done", done))
     if not created:
         lines.append("No new recommendations.")
         lines.append("")
@@ -168,6 +170,21 @@ def run_daily_review(db_path=None) -> int:
             "SELECT * FROM official_tasks WHERE status IN ({}) AND is_review_excluded=0".format(",".join("?" for _ in REVIEWABLE)),
             tuple(REVIEWABLE),
         ).fetchall()
+        report_tasks = conn.execute(
+            """
+            WITH RECURSIVE tree AS (
+              SELECT official_tasks.*, printf('%06d.%06d', COALESCE(sort_order, 0), id) AS tree_path, 0 AS depth
+              FROM official_tasks
+              WHERE parent_task_id IS NULL AND status!='dropped'
+              UNION ALL
+              SELECT child.*, tree.tree_path || '.' || printf('%06d.%06d', COALESCE(child.sort_order, 0), child.id), tree.depth + 1
+              FROM official_tasks child
+              JOIN tree ON child.parent_task_id = tree.id
+              WHERE child.status!='dropped' AND child.is_review_excluded=0
+            )
+            SELECT * FROM tree ORDER BY tree_path
+            """
+        ).fetchall()
         created = []
         due_soon = stale = blocked = skipped_duplicates = 0
         for task in tasks:
@@ -183,7 +200,7 @@ def run_daily_review(db_path=None) -> int:
                     skipped_duplicates += 1
                     continue
                 created.append((task, {**rec, "id": rec_id}))
-        report = write_report(review_id, today.isoformat(), tasks, created, skipped_duplicates)
+        report = write_report(review_id, today.isoformat(), report_tasks, created, skipped_duplicates)
         discord_should_send = any(rec["severity"] in VISIBLE_SEVERITIES for _, rec in created)
         summary = f"{len(created)} new recommendations; {skipped_duplicates} duplicates skipped; discord {'ready' if discord_should_send else 'skipped'}"
         conn.execute(

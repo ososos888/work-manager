@@ -34,6 +34,7 @@ def test_seed_schema_and_review(tmp_path):
     report_text = report_path.read_text(encoding="utf-8")
     assert "## In progress" in report_text
     assert "## Not started / on demand" in report_text
+    assert "## Done" in report_text
     assert "No new recommendations" in report_text
 
 
