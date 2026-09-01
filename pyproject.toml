@@ -1,0 +1,19 @@
+[project]
+name = "work-manager"
+version = "0.1.0"
+description = "Local task dashboard and daily review MVP"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "pyyaml>=6.0",
+  "jinja2>=3.1",
+  "python-multipart>=0.0.9"
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "httpx>=0.27"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

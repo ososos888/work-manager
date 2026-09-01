@@ -1,0 +1,93 @@
+tasks:
+  - id: 1
+    category: platform-alpha
+    title: operation coverage matrix
+    status: todo
+    priority: low
+    notes: sample low-priority coverage tracking task
+  - id: 2
+    category: platform-alpha
+    title: integration test support
+    status: todo
+    priority: later
+    notes: sample future integration-test task
+  - id: 3
+    category: platform-alpha
+    title: bugfix and feature queue
+    status: on_demand
+    priority: medium
+    notes: sample ad-hoc engineering queue
+  - id: 4
+    category: platform-alpha
+    title: regression suite maintenance
+    status: excluded
+    priority: low
+    is_review_excluded: true
+    notes: sample task excluded from daily review
+  - id: 5
+    category: project-beta
+    title: workspace review
+    status: active
+    priority: high
+    local_path: /path/to/project-beta
+  - id: 6
+    category: project-beta
+    title: benchmark tool
+    status: active
+    priority: high
+    local_path: /path/to/project-beta
+  - id: 7
+    category: project-beta
+    title: log parser
+    status: active
+    priority: high
+    local_path: /path/to/project-beta
+  - id: 8
+    category: project-beta
+    title: experiment manager
+    status: todo
+    priority: medium
+    local_path: /path/to/project-beta
+  - id: 9
+    category: project-beta
+    title: regression check
+    status: on_demand
+    priority: medium
+    local_path: /path/to/project-beta
+  - id: 10
+    category: project-beta
+    title: report generation from a template
+    status: todo
+    priority: medium
+    local_path: /path/to/project-beta
+  - id: 11
+    category: work-manager
+    title: design
+    status: active
+    priority: highest
+  - id: 12
+    category: work-manager
+    title: task database design
+    status: active
+    priority: highest
+  - id: 13
+    category: work-manager
+    title: daily review automation
+    status: todo
+    priority: highest
+  - id: 14
+    category: work-manager
+    title: web dashboard
+    status: todo
+    priority: high
+  - id: 15
+    category: work-manager
+    title: explicit updates and AI recommendation separation
+    status: active
+    priority: highest
+  - id: 16
+    category: work-manager
+    title: chat channel and thread integration
+    status: todo
+    priority: high
+    next_action: design scheduled delivery and chat command handling
