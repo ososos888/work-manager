@@ -26,7 +26,12 @@ def _main_state_authorizer(action, arg1, arg2, db_name, trigger_name):
 
 
 @contextmanager
-def allow_official_writes():
+def allow_official_writes(reason: str = "official-write", backup: bool = True):
+    if backup and config.DB_PATH.exists():
+        from .backup import backup_db, prune_backups
+
+        backup_db(reason)
+        prune_backups(7)
     previous = os.environ.get(OFFICIAL_WRITE_ENV)
     os.environ[OFFICIAL_WRITE_ENV] = "1"
     try:
@@ -211,7 +216,7 @@ def migrate(conn: sqlite3.Connection) -> None:
 
 
 def init_db(path: Path | None = None) -> None:
-    with allow_official_writes(), connect(path) as conn:
+    with allow_official_writes("init-db", backup=path is None or path == config.DB_PATH), connect(path) as conn:
         conn.executescript(SCHEMA)
         migrate(conn)
         install_main_state_guard(conn)

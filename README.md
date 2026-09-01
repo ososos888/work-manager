@@ -26,13 +26,18 @@ Open http://127.0.0.1:8765.
 uv run python scripts/daily_review.py
 ```
 
-Daily review checks official tasks, due dates, stale active work, missing next actions, blocked items, and light local workspace state: path existence, git branch, uncommitted files, and recent commits. It writes pending `ai_recommendations`, records `daily_reviews`, and writes Markdown reports only when recommendations are generated. It does not mutate official tasks. Discord sending is intentionally disabled in this MVP; Hermes cron can deliver a short summary later.
+Daily review checks official tasks, due dates, stale active work, missing next actions, blocked items, and light local workspace state: path existence, git branch, uncommitted files, and recent commits. It writes pending `ai_recommendations`, records `daily_reviews`, and writes Markdown reports. It does not mutate official tasks.
 
 ## Backup
 
 ```bash
 uv run python scripts/backup_db.py
+uv run python scripts/list_backups.py
+uv run python scripts/restore_backup.py backups/<file>.sqlite3 --apply
+uv run python scripts/apply_official_sql.py tmp/update.sql --apply
 ```
+
+Official task-state tables are locked by default. Use `apply_official_sql.py --apply` only after explicit user approval; it creates a backup and prunes backups older than seven days. AI recommendation and daily review tables remain writable for automation.
 
 ## Test
 

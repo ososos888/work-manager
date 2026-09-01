@@ -181,7 +181,7 @@ def add_work_location(
     details: str = Form(""),
 ):
     guard_localhost(request)
-    with allow_official_writes(), connect() as conn:
+    with allow_official_writes("dashboard-work-location"), connect() as conn:
         task = conn.execute("SELECT id FROM official_tasks WHERE id=?", (task_id,)).fetchone()
         if not task:
             return HTMLResponse("not found", status_code=404)

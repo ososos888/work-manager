@@ -66,7 +66,7 @@ def import_seed(seed_path: Path = SEED_PATH, db_path=None) -> int:
     init_db(db_path)
     data = yaml.safe_load(seed_path.read_text(encoding="utf-8")) or {}
     tasks = data.get("tasks", [])
-    with allow_official_writes(), connect(db_path) as conn:
+    with allow_official_writes("seed-import", backup=db_path is None), connect(db_path) as conn:
         for task in tasks:
             conn.execute(UPSERT, normalize(task))
             for link in task.get("links", []):
