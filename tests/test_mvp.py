@@ -33,8 +33,10 @@ def test_seed_schema_and_review(tmp_path):
     assert report_path.exists()
     report_text = report_path.read_text(encoding="utf-8")
     assert "## Deadline / due soon first" in report_text
-    assert "## Other active or not-started work" in report_text
-    assert "## High-priority AI recommendations" in report_text
+    assert "## In progress" in report_text
+    assert "## Not started" in report_text
+    assert "## AI-discovered new work suggestions" in report_text
+    assert "## Process reminders" in report_text
     assert "## Done" in report_text
     assert "No new recommendations" in report_text
 

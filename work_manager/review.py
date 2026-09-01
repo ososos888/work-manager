@@ -35,6 +35,53 @@ def scan_workspace(path: Path) -> dict:
     return snapshot
 
 
+EARLY_PHASE_KEYWORDS = ["설계", "design", "api", "조사", "검토", "확인", "spec"]
+LATE_PHASE_KEYWORDS = ["구현", "implement", "테스트", "test", "검증", "validation", "적용", "배포", "deploy"]
+
+
+def generate_new_work_suggestions(report_tasks: list) -> list[dict]:
+    """Rule-based scan of the task tree for phase gaps (e.g. design/API subtasks
+    exist but no implementation/validation subtask). Proposes NEW work, not
+    process nagging about already-registered tasks."""
+    by_id = {t["id"]: t for t in report_tasks}
+    children_by_parent: dict[int, list] = {}
+    for t in report_tasks:
+        if t["parent_task_id"] is not None:
+            children_by_parent.setdefault(t["parent_task_id"], []).append(t)
+    suggestions = []
+    for parent_id, children in children_by_parent.items():
+        parent = by_id.get(parent_id)
+        if parent is None or parent["status"] in {"done", "dropped"}:
+            continue
+        active_children = [c for c in children if c["status"] != "dropped"]
+        if not active_children:
+            continue
+        titles = " ".join(c["title"].lower() for c in active_children)
+        has_early = any(kw in titles for kw in EARLY_PHASE_KEYWORDS)
+        has_late = any(kw in titles for kw in LATE_PHASE_KEYWORDS)
+        if has_early and not has_late:
+            suggestions.append(
+                {
+                    "task_id": parent_id,
+                    "category": parent["category"],
+                    "recommendation_type": "new_work_suggestion",
+                    "title": "구현/검증 하위 작업 누락 가능성",
+                    "rationale": (
+                        f"{parent['title']}에는 설계/API 확인 관련 하위 작업이 {len(active_children)}건 있지만 "
+                        "구현/검증(테스트) 단계 하위 작업이 등록되어 있지 않습니다. "
+                        "관련 구현 또는 테스트 하위 작업 추가를 고려하세요."
+                    ),
+                    "proposed_action": "구현/검증 하위 작업 추가 검토",
+                    "proposed_field": None,
+                    "proposed_value": None,
+                    "confidence": 0.5,
+                    "severity": "medium",
+                    "source_snapshot": None,
+                }
+            )
+    return suggestions
+
+
 def task_recommendations(task, today: date) -> list[dict]:
     recs = []
     category = task["category"]
@@ -89,17 +136,41 @@ def task_recommendations(task, today: date) -> list[dict]:
     return out
 
 
-def task_line(task) -> str:
-    due = f" · due {task['due_date']}" if task['due_date'] else ""
-    action = f" — next: {task['next_action']}" if task['next_action'] else ""
-    return f"- #{task['id']} [{task['priority']}] {task['category']} · {task['title']}{due}{action}"
+def urgency_marker(days: int | None) -> str:
+    if days is None:
+        return "⚪"
+    if days <= 1:
+        return "🔴"
+    if days <= 3:
+        return "🟡"
+    return "⚪"
 
 
-def task_section(title: str, tasks: list) -> list[str]:
+def task_block(task, today: str) -> list[str]:
+    depth = task["depth"] if "depth" in task.keys() else 0
+    indent = "  " * depth
+    child_prefix = "└ " if depth else ""
+    days = days_until_due(task, today)
+    due = ""
+    if task["due_date"]:
+        marker = urgency_marker(days)
+        d_label = f"D{'+' if days is not None and days >= 0 else ''}{days}" if days is not None else ""
+        due = f" · due {task['due_date']} ({d_label}) {marker}"
+    lines = [f"{indent}{child_prefix}**#{task['id']}** {task['title']}"]
+    lines.append(f"{indent}  {task['category']} · {task['priority']}{due}")
+    if task["next_action"]:
+        lines.append(f"{indent}  next: {task['next_action']}")
+    return lines
+
+
+def task_section(title: str, tasks: list, today: str) -> list[str]:
     lines = [f"## {title}", ""]
     if not tasks:
         return lines + ["None.", ""]
-    return lines + [task_line(task) for task in tasks] + [""]
+    for task in tasks:
+        lines.extend(task_block(task, today))
+    lines.append("")
+    return lines
 
 
 def recommendation_section(title: str, recs: list) -> list[str]:
@@ -131,14 +202,20 @@ def write_report(review_id: int, today: str, tasks: list, created: list[tuple], 
         "",
     ]
     urgent = [task for task in tasks if task["status"] != "done" and (days_until_due(task, today) is not None and days_until_due(task, today) <= 7)]
-    active = [task for task in tasks if task["status"] in {"active", "blocked", "waiting", "todo", "on_demand"} and task not in urgent]
+    in_progress = [task for task in tasks if task["status"] in {"active", "blocked", "waiting"} and task not in urgent]
+    not_started = [task for task in tasks if task["status"] in {"todo", "on_demand"} and task not in urgent]
     done = [task for task in tasks if task["status"] == "done"]
     urgent = sorted(urgent, key=lambda task: (days_until_due(task, today), priority_rank(task), task["tree_path"] if "tree_path" in task.keys() else task["id"]))
-    active = sorted(active, key=lambda task: (priority_rank(task), task["tree_path"] if "tree_path" in task.keys() else task["id"]))
-    lines.extend(task_section("Deadline / due soon first", urgent))
-    lines.extend(task_section("Other active or not-started work", active))
-    lines.extend(recommendation_section("High-priority AI recommendations", [rec for _, rec in created[:5]]))
-    lines.extend(task_section("Done", done))
+    in_progress = sorted(in_progress, key=lambda task: (priority_rank(task), task["tree_path"] if "tree_path" in task.keys() else task["id"]))
+    not_started = sorted(not_started, key=lambda task: (priority_rank(task), task["tree_path"] if "tree_path" in task.keys() else task["id"]))
+    new_work = [rec for _, rec in created if rec["recommendation_type"] == "new_work_suggestion"]
+    process = [rec for _, rec in created if rec["recommendation_type"] != "new_work_suggestion"]
+    lines.extend(task_section("Deadline / due soon first", urgent, today))
+    lines.extend(task_section("In progress", in_progress, today))
+    lines.extend(task_section("Not started", not_started, today))
+    lines.extend(recommendation_section("AI-discovered new work suggestions", new_work[:5]))
+    lines.extend(recommendation_section("Process reminders", process[:5]))
+    lines.extend(task_section("Done", done, today))
     if not created:
         lines.append("No new recommendations.")
         lines.append("")
@@ -220,6 +297,13 @@ def run_daily_review(db_path=None) -> int:
                     skipped_duplicates += 1
                     continue
                 created.append((task, {**rec, "id": rec_id}))
+        by_id = {t["id"]: t for t in report_tasks}
+        for rec in generate_new_work_suggestions(report_tasks):
+            rec_id = insert_recommendation(conn, rec, review_id)
+            if rec_id is None:
+                skipped_duplicates += 1
+                continue
+            created.append((by_id[rec["task_id"]], {**rec, "id": rec_id}))
         report = write_report(review_id, today.isoformat(), report_tasks, created, skipped_duplicates)
         discord_should_send = any(rec["severity"] in VISIBLE_SEVERITIES for _, rec in created)
         summary = f"{len(created)} new recommendations; {skipped_duplicates} duplicates skipped; discord {'ready' if discord_should_send else 'skipped'}"

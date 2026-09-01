@@ -10,11 +10,29 @@ DASHBOARD_URL = 'http://127.0.0.1:8765'
 PRIORITY_RANK = {'highest': 0, 'high': 1, 'medium': 2, 'low': 3, 'later': 4}
 
 
+def urgency_marker(days):
+    if days is None or days > 3:
+        return '⚪'
+    if days <= 1:
+        return '🔴'
+    return '🟡'
+
+
 def task_line(row):
-    due = f" · due {row['due_date']}" if row['due_date'] else ''
-    action = f" — next: {row['next_action']}" if row['next_action'] else ''
-    prefix = '↳ ' * row['depth']
-    return f"- {prefix}#{row['id']} [{row['priority']}] {row['category']} · {row['title']}{due}{action}"
+    depth = row['depth']
+    indent = '  ' * depth
+    child_prefix = '└ ' if depth else ''
+    days = row['days_until_due']
+    due = ''
+    if row['due_date']:
+        marker = urgency_marker(days)
+        d_label = f"D{'+' if days is not None and days >= 0 else ''}{days}" if days is not None else ''
+        due = f" · due {row['due_date']} ({d_label}) {marker}"
+    lines = [f"{indent}{child_prefix}**#{row['id']}** {row['title']}"]
+    lines.append(f"{indent}  {row['category']} · {row['priority']}{due}")
+    if row['next_action']:
+        lines.append(f"{indent}  next: {row['next_action']}")
+    return '\n'.join(lines)
 
 
 def rec_line(row):
@@ -64,19 +82,23 @@ def main() -> None:
         ).fetchall()
         top_recs = conn.execute(
             """
-            SELECT r.id, r.severity, COALESCE(t.category, r.category) category, r.title, r.rationale
+            SELECT r.id, r.severity, r.recommendation_type, COALESCE(t.category, r.category) category, r.title, r.rationale
             FROM ai_recommendations r
             LEFT JOIN official_tasks t ON t.id=r.task_id
             WHERE r.status='pending'
             ORDER BY CASE r.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, r.created_at DESC
-            LIMIT 5
+            LIMIT 20
             """
         ).fetchall()
+    new_work_recs = [r for r in top_recs if r['recommendation_type'] == 'new_work_suggestion'][:5]
+    process_recs = [r for r in top_recs if r['recommendation_type'] != 'new_work_suggestion'][:5]
     urgent = [row for row in all_tasks if row['status'] != 'done' and row['days_until_due'] is not None and row['days_until_due'] <= 7]
-    remaining = [row for row in all_tasks if row['status'] in {'active', 'blocked', 'waiting', 'todo', 'on_demand'} and row not in urgent]
+    in_progress = [row for row in all_tasks if row['status'] in {'active', 'blocked', 'waiting'} and row not in urgent]
+    not_started = [row for row in all_tasks if row['status'] in {'todo', 'on_demand'} and row not in urgent]
     done = [row for row in all_tasks if row['status'] == 'done']
     urgent = sorted(urgent, key=rank)
-    remaining = sorted(remaining, key=lambda row: (PRIORITY_RANK.get(row['priority'], 9), row['tree_path']))
+    in_progress = sorted(in_progress, key=lambda row: (PRIORITY_RANK.get(row['priority'], 9), row['tree_path']))
+    not_started = sorted(not_started, key=lambda row: (PRIORITY_RANK.get(row['priority'], 9), row['tree_path']))
     lines = [
         f"work-manager daily review #{review_id}",
         f"dashboard: {DASHBOARD_URL}",
@@ -85,7 +107,9 @@ def main() -> None:
     if review['markdown_report_path']:
         lines.append(f"report: {review['markdown_report_path']}")
     add_section(lines, 'Deadline / due soon first', urgent, task_line)
-    add_section(lines, 'Other active or not-started work', remaining, task_line)
-    add_section(lines, 'High-priority AI recommendations', top_recs, rec_line)
+    add_section(lines, 'In progress', in_progress, task_line)
+    add_section(lines, 'Not started', not_started, task_line)
+    add_section(lines, 'AI-discovered new work suggestions', new_work_recs, rec_line)
+    add_section(lines, 'Process reminders', process_recs, rec_line)
     add_section(lines, 'Done', done, task_line)
     print('\n'.join(lines))
