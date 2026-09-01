@@ -26,7 +26,7 @@ def task_line(row):
     due = ''
     if row['due_date']:
         marker = urgency_marker(days)
-        d_label = f"D{'+' if days is not None and days >= 0 else ''}{days}" if days is not None else ''
+        d_label = f"D{'-' if days is not None and days >= 0 else '+'}{abs(days) if days is not None else ''}" if days is not None else ''
         due = f" · due {row['due_date']} ({d_label}) {marker}"
     lines = [f"{indent}{child_prefix}**#{row['id']}** {row['title']}"]
     lines.append(f"{indent}  {row['category']} · {row['priority']}{due}")
