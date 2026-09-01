@@ -30,7 +30,10 @@ CREATE TABLE IF NOT EXISTS official_tasks (
   is_review_excluded INTEGER NOT NULL DEFAULT 0,
   source TEXT NOT NULL DEFAULT 'manual',
   created_by TEXT,
-  updated_by TEXT
+  updated_by TEXT,
+  task_type TEXT NOT NULL DEFAULT 'task',
+  parent_task_id INTEGER REFERENCES official_tasks(id) ON DELETE SET NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS task_links (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,6 +41,15 @@ CREATE TABLE IF NOT EXISTS task_links (
   link_type TEXT NOT NULL,
   label TEXT,
   url TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS task_work_locations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL REFERENCES official_tasks(id) ON DELETE CASCADE,
+  location_type TEXT NOT NULL,
+  label TEXT,
+  uri TEXT NOT NULL,
+  details TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS task_updates (
@@ -48,6 +60,7 @@ CREATE TABLE IF NOT EXISTS task_updates (
   field_name TEXT,
   old_value TEXT,
   new_value TEXT,
+  body TEXT,
   message TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_by TEXT,
@@ -136,10 +149,14 @@ def migrate(conn: sqlite3.Connection) -> None:
             "source": "TEXT NOT NULL DEFAULT 'manual'",
             "created_by": "TEXT",
             "updated_by": "TEXT",
+            "task_type": "TEXT NOT NULL DEFAULT 'task'",
+            "parent_task_id": "INTEGER REFERENCES official_tasks(id) ON DELETE SET NULL",
+            "sort_order": "INTEGER NOT NULL DEFAULT 0",
         },
     )
     ensure_columns(conn, "task_links", {"link_type": "TEXT NOT NULL DEFAULT 'other'", "label": "TEXT"})
-    ensure_columns(conn, "task_updates", {"update_type": "TEXT", "field_name": "TEXT", "old_value": "TEXT", "new_value": "TEXT", "message": "TEXT", "created_by": "TEXT", "discord_message_id": "TEXT"})
+    ensure_columns(conn, "task_work_locations", {"location_type": "TEXT NOT NULL DEFAULT 'local'", "label": "TEXT", "details": "TEXT"})
+    ensure_columns(conn, "task_updates", {"update_type": "TEXT", "field_name": "TEXT", "old_value": "TEXT", "new_value": "TEXT", "body": "TEXT", "message": "TEXT", "created_by": "TEXT", "discord_message_id": "TEXT"})
     ensure_columns(conn, "ai_recommendations", {"category": "TEXT", "recommendation_type": "TEXT NOT NULL DEFAULT 'risk'", "rationale": "TEXT", "proposed_action": "TEXT", "proposed_field": "TEXT", "proposed_value": "TEXT", "confidence": "REAL", "reviewed_at": "TEXT", "reviewed_by": "TEXT", "decision_note": "TEXT", "source_snapshot": "TEXT"})
     ensure_columns(conn, "daily_reviews", {"total_tasks": "INTEGER NOT NULL DEFAULT 0", "due_soon_count": "INTEGER NOT NULL DEFAULT 0", "stale_count": "INTEGER NOT NULL DEFAULT 0", "blocked_count": "INTEGER NOT NULL DEFAULT 0", "recommendation_count": "INTEGER NOT NULL DEFAULT 0", "markdown_report_path": "TEXT", "discord_message_id": "TEXT", "status": "TEXT NOT NULL DEFAULT 'running'", "error": "TEXT"})
 

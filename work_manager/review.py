@@ -89,12 +89,20 @@ def task_recommendations(task, today: date) -> list[dict]:
     return out
 
 
-def write_report(review_id: int, today: str, created: list[tuple]) -> Path | None:
-    if not created:
-        return None
+def write_report(review_id: int, today: str, tasks: list, created: list[tuple], skipped_duplicates: int) -> Path:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     report = REPORTS_DIR / f"daily-review-{today}-{review_id}.md"
-    lines = [f"# Daily Review {today}", "", f"Recommendations: {len(created)}", ""]
+    lines = [
+        f"# Daily Review {today}",
+        "",
+        f"Reviewed tasks: {len(tasks)}",
+        f"New recommendations: {len(created)}",
+        f"Duplicate pending recommendations skipped: {skipped_duplicates}",
+        "",
+    ]
+    if not created:
+        lines.append("No new recommendations.")
+        lines.append("")
     for task, rec in created:
         lines += [f"## {rec['severity']} · {task['category']} · {task['title']}", "", rec["title"], "", rec["rationale"], ""]
     report.write_text("\n".join(lines), encoding="utf-8")
@@ -158,7 +166,7 @@ def run_daily_review(db_path=None) -> int:
                     skipped_duplicates += 1
                     continue
                 created.append((task, {**rec, "id": rec_id}))
-        report = write_report(review_id, today.isoformat(), created)
+        report = write_report(review_id, today.isoformat(), tasks, created, skipped_duplicates)
         discord_should_send = any(rec["severity"] in VISIBLE_SEVERITIES for _, rec in created)
         summary = f"{len(created)} new recommendations; {skipped_duplicates} duplicates skipped; discord {'ready' if discord_should_send else 'skipped'}"
         conn.execute(
