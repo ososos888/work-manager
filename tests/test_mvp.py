@@ -36,7 +36,7 @@ def test_seed_schema_and_review(tmp_path):
     assert "## In progress" in report_text
     assert "## Not started" in report_text
     assert "## AI-discovered new work suggestions" in report_text
-    assert "## Process reminders" in report_text
+    assert "## Process reminders" not in report_text
     assert "## Done" in report_text
     assert "No new recommendations" in report_text
 

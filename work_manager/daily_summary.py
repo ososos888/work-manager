@@ -18,6 +18,9 @@ def urgency_marker(days):
     return '🟡'
 
 
+PRIORITY_BADGE = {'highest': '🔺', 'high': '🔴', 'medium': '🟠', 'low': '🔵', 'later': '⚪'}
+
+
 def task_line(row):
     depth = row['depth']
     indent = '  ' * depth
@@ -28,7 +31,9 @@ def task_line(row):
         marker = urgency_marker(days)
         d_label = f"D{'-' if days is not None and days >= 0 else '+'}{abs(days) if days is not None else ''}" if days is not None else ''
         due = f" · due {row['due_date']} ({d_label}) {marker}"
-    lines = [f"{indent}{child_prefix}**#{row['id']}** {row['title']}"]
+    badge = PRIORITY_BADGE.get(row['priority'], '')
+    badge_prefix = f"{badge} " if badge else ''
+    lines = [f"{indent}{child_prefix}{badge_prefix}**#{row['id']}** {row['title']}"]
     lines.append(f"{indent}  {row['category']} · {row['priority']}{due}")
     if row['next_action']:
         lines.append(f"{indent}  next: {row['next_action']}")
@@ -91,7 +96,6 @@ def main() -> None:
             """
         ).fetchall()
     new_work_recs = [r for r in top_recs if r['recommendation_type'] == 'new_work_suggestion'][:5]
-    process_recs = [r for r in top_recs if r['recommendation_type'] != 'new_work_suggestion'][:5]
     urgent = [row for row in all_tasks if row['status'] != 'done' and row['days_until_due'] is not None and row['days_until_due'] <= 7]
     in_progress = [row for row in all_tasks if row['status'] in {'active', 'blocked', 'waiting'} and row not in urgent]
     not_started = [row for row in all_tasks if row['status'] in {'todo', 'on_demand'} and row not in urgent]
@@ -110,6 +114,5 @@ def main() -> None:
     add_section(lines, 'In progress', in_progress, task_line)
     add_section(lines, 'Not started', not_started, task_line)
     add_section(lines, 'AI-discovered new work suggestions', new_work_recs, rec_line)
-    add_section(lines, 'Process reminders', process_recs, rec_line)
     add_section(lines, 'Done', done, task_line)
     print('\n'.join(lines))

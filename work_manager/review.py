@@ -209,12 +209,10 @@ def write_report(review_id: int, today: str, tasks: list, created: list[tuple], 
     in_progress = sorted(in_progress, key=lambda task: (priority_rank(task), task["tree_path"] if "tree_path" in task.keys() else task["id"]))
     not_started = sorted(not_started, key=lambda task: (priority_rank(task), task["tree_path"] if "tree_path" in task.keys() else task["id"]))
     new_work = [rec for _, rec in created if rec["recommendation_type"] == "new_work_suggestion"]
-    process = [rec for _, rec in created if rec["recommendation_type"] != "new_work_suggestion"]
     lines.extend(task_section("Deadline / due soon first", urgent, today))
     lines.extend(task_section("In progress", in_progress, today))
     lines.extend(task_section("Not started", not_started, today))
     lines.extend(recommendation_section("AI-discovered new work suggestions", new_work[:5]))
-    lines.extend(recommendation_section("Process reminders", process[:5]))
     lines.extend(task_section("Done", done, today))
     if not created:
         lines.append("No new recommendations.")
