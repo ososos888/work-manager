@@ -1,12 +1,30 @@
 from html import escape
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from .db import RECOMMENDATION_STATUSES, allow_official_writes, connect, init_db
 from .review import run_daily_review
 
 app = FastAPI(title="work-manager")
+
+FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<rect width="32" height="32" rx="6" fill="#315efb"/>
+<rect x="8" y="7" width="16" height="18" rx="2" fill="#ffffff"/>
+<rect x="11" y="11" width="10" height="2" fill="#315efb"/>
+<rect x="11" y="15" width="10" height="2" fill="#315efb"/>
+<rect x="11" y="19" width="6" height="2" fill="#315efb"/>
+</svg>"""
+
+
+@app.get("/favicon.svg")
+def favicon():
+    return Response(content=FAVICON_SVG, media_type="image/svg+xml")
+
+
+@app.get("/favicon.ico")
+def favicon_ico():
+    return Response(content=FAVICON_SVG, media_type="image/svg+xml")
 
 STYLE = """
 <style>
@@ -48,7 +66,7 @@ button, .btn { display:inline-block; background:var(--brand); border-color:var(-
 """
 
 HTML = """
-<!doctype html><html><head><meta charset="utf-8"><title>work-manager</title>{style}</head><body><main class="wrap">
+<!doctype html><html><head><meta charset="utf-8"><title>Work Manager</title><link rel="icon" type="image/svg+xml" href="/favicon.svg">{style}</head><body><main class="wrap">
 <div class="header"><div><h1>Work manager</h1><div class="subtle">Local task dashboard · official updates and AI recommendations are separated</div></div><form method="post" action="/reviews/manual"><button>Run daily review</button></form></div>
 <section class="card">
 <form class="toolbar"><input name="q" value="{q}" placeholder="Search title"><input name="status" value="{status}" placeholder="status"><input name="category" value="{category}" placeholder="category"><select name="source"><option value="non_seed" {source_non_seed}>registered only</option><option value="all" {source_all}>all tasks</option><option value="seed" {source_seed}>seed only</option></select><button>Filter</button></form>
@@ -61,7 +79,7 @@ HTML = """
 """
 
 DETAIL = """
-<!doctype html><html><head><meta charset="utf-8"><title>{title}</title>{style}</head><body><main class="wrap">
+<!doctype html><html><head><meta charset="utf-8"><title>{title} · Work Manager</title><link rel="icon" type="image/svg+xml" href="/favicon.svg">{style}</head><body><main class="wrap">
 <div class="header"><div><a href="/">← Back</a><h1>{title}</h1><div class="subtle">#{task_id} · {category} · {task_type}</div></div><div class="pills"><span class="pill {task_type_class}">{task_type}</span><span class="pill {status}">{status}</span><span class="pill">{priority}</span><span class="pill">due {due_date}</span></div></div>
 <section class="card"><div class="kv"><b>Next action</b><div>{next_action}</div><b>Local path</b><div>{local_path}</div><b>Notes</b><div>{notes}</div></div></section>
 <section class="card" style="margin-top:16px"><h2>Work locations</h2><ul class="list">{locations}</ul><form class="form-row" method="post" action="/tasks/{task_id}/work-locations"><input name="location_type" placeholder="local/container/server" required><input name="label" placeholder="label"><input name="uri" placeholder="file://, ssh://, vscode://, https://" required><input name="details" placeholder="details"><button>Add</button></form></section>
@@ -207,7 +225,7 @@ def recommendations(request: Request, status: str = "pending"):
     guard_localhost(request)
     with connect() as conn:
         recs = conn.execute("SELECT * FROM ai_recommendations WHERE status=? ORDER BY created_at DESC", (status,)).fetchall()
-    return f"<!doctype html><html><head><meta charset='utf-8'><title>Recommendations</title>{STYLE}</head><body><main class='wrap'><a href='/'>← Back</a><h1>Recommendations</h1><section class='card'><ul class='list'>" + "".join(rec_item(r) for r in recs) + "</ul></section></main></body></html>"
+    return f"<!doctype html><html><head><meta charset='utf-8'><title>Recommendations · Work Manager</title><link rel='icon' type='image/svg+xml' href='/favicon.svg'>{STYLE}</head><body><main class='wrap'><a href='/'>← Back</a><h1>Recommendations</h1><section class='card'><ul class='list'>" + "".join(rec_item(r) for r in recs) + "</ul></section></main></body></html>"
 
 
 @app.post("/recommendations/{rec_id}/decide")
@@ -234,4 +252,4 @@ def review_detail(request: Request, review_id: int):
         review = conn.execute("SELECT * FROM daily_reviews WHERE id=?", (review_id,)).fetchone()
     if not review:
         return HTMLResponse("not found", status_code=404)
-    return f"<!doctype html><html><head><meta charset='utf-8'><title>Review {review_id}</title>{STYLE}</head><body><main class='wrap'><a href='/'>← Back</a><h1>Review {review_id}</h1><section class='card'><p>{escape(review['summary'])}</p><p>{escape(review['markdown_report_path'] or '')}</p></section></main></body></html>"
+    return f"<!doctype html><html><head><meta charset='utf-8'><title>Review {review_id} · Work Manager</title><link rel='icon' type='image/svg+xml' href='/favicon.svg'>{STYLE}</head><body><main class='wrap'><a href='/'>← Back</a><h1>Review {review_id}</h1><section class='card'><p>{escape(review['summary'])}</p><p>{escape(review['markdown_report_path'] or '')}</p></section></main></body></html>"
